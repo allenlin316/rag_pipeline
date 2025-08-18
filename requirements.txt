@@ -1,0 +1,10 @@
+requests>=2.31.0
+python-dotenv>=1.0.0
+numpy>=1.24.0
+dataclasses>=0.6
+typing-extensions>=4.5.0
+chromadb>=0.4.0 
+ragas>=0.0.22
+litellm>=1.0.0
+instructor[litellm]==1.5.0
+deepeval>=0.0.1 
