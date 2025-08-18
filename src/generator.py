@@ -56,7 +56,9 @@ def generator(query: str, documents: List["Document"]) -> str:
     Returns:
         生成的回答
     """
-    print(f"🤖 生成回答...")
+    generator_api = GeneratorAPI()
+    
+    print(f"🤖 使用 {generator_api.model} 生成回答...")
     
     if not documents:
         return "抱歉，我沒有找到相關的資訊來回答您的問題。"
@@ -73,7 +75,7 @@ def generator(query: str, documents: List["Document"]) -> str:
 
 請用繁體中文提供準確、有幫助的回答："""
 
-    generator_api = GeneratorAPI()
+    
     
     try:
         answer = generator_api.generate(prompt)

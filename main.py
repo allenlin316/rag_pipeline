@@ -1,6 +1,8 @@
 import os
 import json
 from typing import List, Dict, Any, Optional
+import csv
+import time
 import numpy as np
 from dataclasses import dataclass
 from config import get_config, init_config
@@ -31,7 +33,7 @@ def rag_pipeline(query: str, vector_store: ChromaVectorStore) -> str:
     
     # 2. Reranker 階段 (可選)
     if config.enable_reranker:
-        print("🔄 啟用 Reranker 階段")
+        print(f"🔄 啟用 {config.reranker_model} Reranker 階段")
         reranked_docs = reranker(query, retrieved_docs, top_k=config.reranker_top_k)
     else:
         print("⏭️  跳過 Reranker 階段")
@@ -65,6 +67,64 @@ def rag_pipeline(query: str, vector_store: ChromaVectorStore) -> str:
             print("\n📈 評估結果：")
             for k, v in results.items():
                 print(f"  {k}: {v.get('score')} | {v.get('reason')}")
+
+            # 可選：儲存到 CSV
+            if getattr(config, "enable_metrics_logging", False):
+                try:
+                    # 蒐集模型資訊
+                    embedding_model = getattr(config, "embedding_model", None)
+                    reranker_model = getattr(config, "reranker_model", None)
+                    generator_model = getattr(config, "generator_model", None)
+
+                    # 蒐集指標分數
+                    faithfulness = (results.get("faithfulness") or {}).get("score")
+                    answer_relevancy = (results.get("answer_relevancy") or {}).get("score")
+                    contextual_precision = (results.get("contextual_precision") or {}).get("score")
+                    contextual_recall = (results.get("contextual_recall") or {}).get("score")
+                    contextual_relevancy = (results.get("contextual_relevancy") or {}).get("score")
+
+                    csv_path = getattr(config, "metrics_csv_path", "metrics_logs.csv")
+                    file_exists = False
+                    try:
+                        # 檢查是否存在
+                        file_exists = os.path.exists(csv_path)
+                    except Exception:
+                        file_exists = False
+
+                    # 建立/附加 CSV
+                    with open(csv_path, mode="a", encoding="utf-8", newline="") as f:
+                        writer = csv.DictWriter(
+                            f,
+                            fieldnames=[
+                                "timestamp",
+                                "query",
+                                "embedding_model",
+                                "reranker_model",
+                                "generator_model",
+                                "faithfulness",
+                                "answer_relevancy",
+                                "contextual_precision",
+                                "contextual_recall",
+                                "contextual_relevancy",
+                            ],
+                        )
+                        if not file_exists:
+                            writer.writeheader()
+                        writer.writerow({
+                            "timestamp": int(time.time()),
+                            "query": query,
+                            "embedding_model": embedding_model,
+                            "reranker_model": reranker_model,
+                            "generator_model": generator_model,
+                            "faithfulness": faithfulness,
+                            "answer_relevancy": answer_relevancy,
+                            "contextual_precision": contextual_precision,
+                            "contextual_recall": contextual_recall,
+                            "contextual_relevancy": contextual_relevancy,
+                        })
+                    print(f"💾 已儲存評估結果到 {csv_path}")
+                except Exception as e:
+                    print(f"⚠️ 儲存評估結果到 CSV 失敗: {e}")
         except Exception as e:
             print(f"⚠️ 評估失敗: {e}")
     

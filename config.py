@@ -44,7 +44,8 @@ def parse_arguments():
     
     # 模型設定
     parser.add_argument(
-        "--embedding-model",
+        "--embedding-model", "-c",
+        dest="embedding_model",
         type=str,
         default="llama-3.2-nv-embedqa-1b-v2",
         help="Embedding model name"
@@ -66,7 +67,7 @@ def parse_arguments():
     parser.add_argument(
         "--retriever-top-k",
         type=int,
-        default=20,
+        default=10,
         help="Number of documents to retrieve in retriever stage"
     )
     
@@ -140,6 +141,24 @@ def parse_arguments():
         default=None,
         help="Optional expected output text for evaluation"
     )
+    # 評估結果儲存參數
+    parser.add_argument(
+        "--enable-metrics-logging",
+        action="store_true",
+        default=False,
+        help="Enable appending evaluation metrics to a CSV file"
+    )
+    parser.add_argument(
+        "--disable-metrics-logging",
+        action="store_true",
+        help="Disable metrics CSV logging"
+    )
+    parser.add_argument(
+        "--metrics-csv-path",
+        type=str,
+        default="metrics_logs.csv",
+        help="Path to the CSV file for saving evaluation metrics"
+    )
     # 文本分塊參數
     parser.add_argument(
         "--enable-chunking",
@@ -188,6 +207,9 @@ def parse_arguments():
     # 處理 eval 開關邏輯
     if args.disable_eval:
         args.enable_eval = False
+    # 處理 metrics logging 開關邏輯
+    if args.disable_metrics_logging:
+        args.enable_metrics_logging = False
     
     # 確保 API Key 優先從環境變數讀取
     if not args.retrieval_reranker_api_key or not args.generator_api_key:

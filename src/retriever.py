@@ -110,7 +110,9 @@ class ChromaVectorStore:
         else:
             self.chunker = None
             print("⏭️ 禁用文本分塊")
-    
+        
+        print(f"使用 {self.embedding_api.model} 進行 embedding")
+        
     def add_documents(self, documents: List[Document]):
         """添加文件到 Chroma 向量儲存"""
         print(f"📚 添加 {len(documents)} 個文件到 Chroma...")
