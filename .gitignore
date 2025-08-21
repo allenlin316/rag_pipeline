@@ -127,3 +127,4 @@ api-access-models-list.json
 quick_test.py
 .deepeval/
 *.csv
+test.json

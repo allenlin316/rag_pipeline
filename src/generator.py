@@ -30,7 +30,7 @@ class GeneratorAPI:
                 {"role": "user", "content": prompt}
             ],
             "max_tokens": max_tokens or self.max_tokens,
-            "temperature": temperature or self.temperature
+            "temperature": temperature or self.temperature,
         }
         
         response = requests.post(

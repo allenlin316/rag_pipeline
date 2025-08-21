@@ -2,6 +2,10 @@ import requests
 import chromadb
 from chromadb.config import Settings
 from typing import List, Dict, Any
+try:
+    from tqdm import tqdm  # 可選依賴：若不存在則退回簡單列印
+except Exception:
+    tqdm = None
 from dataclasses import dataclass
 from config import get_config
 from .text_chunker import DocumentChunker, TextChunker
@@ -17,13 +21,14 @@ class EmbeddingAPI:
     """Embedding API 客戶端"""
     def __init__(self, api_key: str = None, base_url: str = None, model: str = None):
         config = get_config()
-        self.api_key = config.retrieval_reranker_api_key
+        self.api_key = config.generator_api_key
         self.base_url = base_url or config.retriever_base_url
         self.model = model or config.embedding_model
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
+        self.session = requests.Session()
     
     def get_embedding(self, text: str, model: str = None) -> List[float]:
         """獲取文本的 embedding"""
@@ -36,30 +41,53 @@ class EmbeddingAPI:
         }
         
         try:
-            response = requests.post(
+            r = self.session.post(
                 f"{self.base_url}/embeddings",
                 headers=self.headers,
                 json=data,
                 timeout=30  # 添加超時
             )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if "data" in result and len(result["data"]) > 0:
-                    embedding = result["data"][0]["embedding"]
-                    if embedding and len(embedding) > 0:
-                        return embedding
-                    else:
-                        raise Exception("API 返回的 embedding 為空")
+            r.raise_for_status()
+            result = r.json()
+            if "data" in result and len(result["data"]) > 0:
+                embedding = result["data"][0]["embedding"]
+                if embedding and len(embedding) > 0:
+                    return embedding
                 else:
-                    raise Exception("API 返回的數據格式不正確")
+                    raise Exception("API 返回的 embedding 為空")
             else:
-                raise Exception(f"API 請求失敗: {response.status_code} - {response.text}")
+                raise Exception("API 返回的數據格式不正確")
                 
         except requests.exceptions.RequestException as e:
             raise Exception(f"網絡請求錯誤: {e}")
         except Exception as e:
             raise Exception(f"獲取 embedding 時發生錯誤: {e}")
+
+    def get_embeddings(self, texts: List[str], model: str = None) -> List[List[float]]:
+        """獲取多個文本的 embedding"""
+        if not texts:
+            return []
+        data = {
+            "input": texts,
+            "model": model or self.model
+        }
+        try:
+            r = self.session.post(
+                f"{self.base_url}/embeddings",
+                headers=self.headers,
+                json=data,
+                timeout=60  # 添加超時
+            )
+            r.raise_for_status()
+            result = r.json()
+            if "data" in result and len(result["data"]) > 0:
+                return [d["embedding"] for d in result["data"]]
+            else:
+                raise Exception("API 返回的數據格式不正確")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"網絡請求錯誤: {e}")
+        except Exception as e:
+            raise Exception(f"獲取 embeddings 時發生錯誤: {e}")
 
 class ChromaVectorStore:
     """使用 Chroma 的向量儲存"""
@@ -69,7 +97,8 @@ class ChromaVectorStore:
         persist_directory: str = "./chroma_db",
         enable_chunking: bool = True,
         chunk_size: int = 512,
-        chunk_overlap: int = 200
+        chunk_overlap: int = 0,
+        reset: bool = False
     ):
         self.collection_name = collection_name
         self.persist_directory = persist_directory
@@ -84,6 +113,14 @@ class ChromaVectorStore:
             )
         )
         
+        # 重置集合（可選）
+        if reset:
+            try:
+                self.client.delete_collection(name=collection_name)
+                print(f"🗑️ 已重置集合: {collection_name}")
+            except Exception:
+                pass
+
         # 獲取或創建集合
         try:
             self.collection = self.client.get_collection(name=collection_name)
@@ -143,7 +180,12 @@ class ChromaVectorStore:
             print(f"⚠️ 無法確定 embedding 維度: {e}")
             embedding_dimension = 1536  # 預設維度
         
-        for i, doc in enumerate(documents_to_add):
+        total_docs = len(documents_to_add)
+        iterator = documents_to_add
+        if tqdm is not None:
+            iterator = tqdm(documents_to_add, desc="Embedding documents", unit="doc")
+
+        for i, doc in enumerate(iterator):
             # 生成唯一 ID
             doc_id = f"doc_{i}_{hash(doc.content) % 10000}"
             ids.append(doc_id)
@@ -172,6 +214,11 @@ class ChromaVectorStore:
                 # 如果 API 失敗，使用零向量作為備用
                 zero_embedding = [0.0] * embedding_dimension
                 embeddings.append(zero_embedding)
+
+            # 簡易進度輸出（當未安裝 tqdm 時）
+            if tqdm is None and total_docs > 0:
+                if (i + 1) == 1 or (i + 1) % 5 == 0 or (i + 1) == total_docs:
+                    print(f"⏳ 進度: {i + 1}/{total_docs}")
         
         # 若沒有可添加的文檔，直接返回
         if not ids and len(documents_to_add) == 0:
@@ -183,6 +230,27 @@ class ChromaVectorStore:
             if not ids or not embeddings:
                 print("⚠️ 空的 ids 或 embeddings，跳過添加")
                 return
+            
+            # 使用批次 API 進行嵌入
+            batch_size = 64 # 設定批次大小
+            for i in range(0, len(texts), batch_size):
+                batch_texts = texts[i:i+batch_size]
+                batch_ids = ids[i:i+batch_size]
+                batch_metadatas = metadatas[i:i+batch_size]
+                
+                batch_embs = self.embedding_api.get_embeddings(batch_texts)
+                
+                if len(batch_embs) != len(batch_texts):
+                    raise Exception(f"批次嵌入失敗，預期 {len(batch_texts)} 個 embedding，但只收到 {len(batch_embs)} 個")
+                
+                for j, emb in enumerate(batch_embs):
+                    if emb and len(emb) > 0:
+                        embeddings[i+j] = emb # 更新 embeddings 列表
+                    else:
+                        print(f"⚠️ 批次嵌入失敗 (文檔 {i+j+1}): 獲取到的 embedding 為空")
+                        # 如果 API 失敗，使用零向量作為備用
+                        embeddings[i+j] = [0.0] * embedding_dimension
+
             self.collection.add(
                 ids=ids,
                 documents=texts,
@@ -210,13 +278,26 @@ class ChromaVectorStore:
             # 轉換為 Document 物件
             documents = []
             if results["documents"] and results["documents"][0]:
+                print(f"🔍 檢索到 {len(results['documents'][0])} 個文檔")
+                print(f"🔍 距離值: {results['distances'][0]}")
                 for i, (doc_text, metadata, distance) in enumerate(zip(
                     results["documents"][0],
                     results["metadatas"][0],
                     results["distances"][0]
                 )):
                     # 將距離轉換為相似度分數 (Chroma 使用歐幾里得距離)
-                    similarity_score = 1.0 / (1.0 + distance)
+                    # 使用更好的轉換方法：1 - normalized_distance
+                    if len(results["distances"][0]) > 1:
+                        max_distance = max(results["distances"][0])
+                        min_distance = min(results["distances"][0])
+                        if max_distance > min_distance:
+                            normalized_distance = (distance - min_distance) / (max_distance - min_distance)
+                            similarity_score = 1.0 - normalized_distance
+                        else:
+                            similarity_score = 1.0  # 如果所有距離都相同
+                    else:
+                        # 如果只有一個結果，使用原始轉換方法
+                        similarity_score = 1.0 / (1.0 + distance)
                     
                     doc = Document(
                         content=doc_text,
@@ -224,6 +305,7 @@ class ChromaVectorStore:
                         score=similarity_score
                     )
                     documents.append(doc)
+                    print(f"🔍 文檔 {i+1} 分數: {similarity_score:.6f} (距離: {distance:.6f})")
             
             return documents
             

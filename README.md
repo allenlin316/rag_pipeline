@@ -267,6 +267,38 @@ for metric_name, result in evaluation_results.items():
 - **Contextual Recall**: 評估檢索上下文的召回率
 - **Contextual Relevancy**: 評估檢索上下文的相關性
 
+### 評估模型配置
+
+評估功能使用自定義的 LLM Judge 模型來進行評估判斷。你可以通過以下方式配置：
+
+```bash
+# 使用命令行參數指定評估模型
+python main.py --llm-judge-model "gpt-oss-120b"
+
+# 或在配置中設定
+python main.py --llm-judge-model "gemma-3-12b-it"
+```
+
+預設的評估模型是 `gpt-oss-120b`，你可以根據需要選擇不同的模型來進行評估。
+
+### 快速測試功能
+
+為了方便快速測試 RAG Pipeline，我們提供了快速測試模式，只處理資料集的第一行：
+
+```bash
+# 快速測試模式（只處理第一行資料）
+python main.py --dataset-name "your_dataset" --quick-test
+
+# 完整測試模式（處理所有資料）
+python main.py --dataset-name "your_dataset"
+```
+
+快速測試模式的特點：
+- ⚡ **快速執行**：只處理資料集的第一行，節省時間
+- 🔍 **詳細輸出**：顯示 context、query、expected answer 和 generated answer
+- 🧪 **測試友好**：適合快速驗證 pipeline 功能
+- 📊 **完整流程**：包含 retriever、reranker 和 generator 所有階段
+
 ## 執行範例
 
 ```bash
@@ -293,6 +325,15 @@ python test_chunking.py
 
 # 使用自定義參數執行
 python main.py --embedding-model "custom-model" --verbose
+
+# 快速測試資料集功能
+python test_quick_dataset.py
+
+# 快速測試資料集（只處理第一行）
+python main.py --dataset-name "your_dataset" --quick-test
+
+# 完整測試資料集
+python main.py --dataset-name "your_dataset"
 ```
 
 ## 配置選項

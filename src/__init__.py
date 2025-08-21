@@ -25,8 +25,7 @@ from .generator import (
 
 from .rag_deepeval import (
     CustomLLMJudge,
-    evaluate_rag_pipeline,
-    create_test_response_schema
+    evaluate_rag_pipeline
 )
 
 __all__ = [

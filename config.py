@@ -26,7 +26,7 @@ def parse_arguments():
     parser.add_argument(
         "--retriever-base-url",
         type=str,
-        default="https://litellm.privai.apmic.ai/",
+        default="https://litellm-ekkks8gsocw.dgx-coolify.apmic.ai/v1",
         help="Base URL for API endpoints"
     )
     parser.add_argument(
@@ -38,7 +38,7 @@ def parse_arguments():
     parser.add_argument(
         "--generator-base-url",
         type=str,
-        default="https://litellm-ekkks8gsocw.dgx-coolify.apmic.ai/",
+        default="https://litellm-ekkks8gsocw.dgx-coolify.apmic.ai/v1",
         help="Base URL for Generator API endpoints"
     )
     
@@ -61,6 +61,12 @@ def parse_arguments():
         type=str,
         default="gemma-3-27b-it",
         help="Generator model name"
+    )
+    parser.add_argument(
+        "--llm-judge-model",
+        type=str,
+        default="Qwen3-30B-A3B",
+        help="LLM Judge model name"
     )
     
     # Retriever 參數
@@ -94,13 +100,13 @@ def parse_arguments():
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=1000,
+        default=4096,
         help="Maximum number of tokens to generate"
     )
     parser.add_argument(
         "--temperature",
         type=float,
-        default=0.7,
+        default=0.0,
         help="Temperature for text generation (0.0-1.0)"
     )
     
@@ -116,6 +122,11 @@ def parse_arguments():
         type=str,
         default="./chroma_db",
         help="Directory to persist Chroma database"
+    )
+    parser.add_argument(
+        "--reset-collection",
+        action="store_true",
+        help="Delete existing Chroma collection before indexing (start fresh)"
     )
     # 評估參數
     parser.add_argument(
@@ -138,14 +149,14 @@ def parse_arguments():
     parser.add_argument(
         "--expected-output-text",
         type=str,
-        default=None,
+        default="",
         help="Optional expected output text for evaluation"
     )
     # 評估結果儲存參數
     parser.add_argument(
         "--enable-metrics-logging",
         action="store_true",
-        default=False,
+        default=True,
         help="Enable appending evaluation metrics to a CSV file"
     )
     parser.add_argument(
@@ -158,6 +169,24 @@ def parse_arguments():
         type=str,
         default="metrics_logs.csv",
         help="Path to the CSV file for saving evaluation metrics"
+    )
+    # Pipeline 結果儲存參數（input、前五個 rerank 文件、generation 結果）
+    parser.add_argument(
+        "--enable-results-logging",
+        action="store_true",
+        default=True,
+        help="Enable appending query, top-5 reranked docs, and generation output to a JSONL file"
+    )
+    parser.add_argument(
+        "--disable-results-logging",
+        action="store_true",
+        help="Disable results JSONL logging"
+    )
+    parser.add_argument(
+        "--results-jsonl-path",
+        type=str,
+        default="results_logs.jsonl",
+        help="Path to the JSONL file for saving pipeline results"
     )
     # 文本分塊參數
     parser.add_argument(
@@ -180,7 +209,7 @@ def parse_arguments():
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        default=200,
+        default=0,
         help="Chunk overlap in characters"
     )
     
@@ -194,6 +223,49 @@ def parse_arguments():
         "--test-mode",
         action="store_true",
         help="Run in test mode with sample data"
+    )
+    # Hugging Face token for gated datasets
+    parser.add_argument(
+        "--hf-token",
+        type=str,
+        default=None,
+        help="Hugging Face access token for gated datasets"
+    )
+    # Dataset 批次評估選項
+    parser.add_argument(
+        "--dataset-name",
+        type=str,
+        default=None,
+        help="Hugging Face dataset identifier (e.g., 'user/repo' or 'squad')"
+    )
+    parser.add_argument(
+        "--dataset-split",
+        type=str,
+        default="train",
+        help="Optional dataset split (e.g., 'train'|'validation'|'test'). If not provided, use all available splits."
+    )
+    parser.add_argument(
+        "--context-field",
+        type=str,
+        default="context",
+        help="Field name for context in dataset"
+    )
+    parser.add_argument(
+        "--question-field",
+        type=str,
+        default="question",
+        help="Field name for question (user query) in dataset"
+    )
+    parser.add_argument(
+        "--answer-field",
+        type=str,
+        default="answer",
+        help="Field name for ground truth answer in dataset"
+    )
+    parser.add_argument(
+        "--quick-test",
+        action="store_true",
+        help="Quick test mode: only process the first row of the dataset"
     )
     
     args = parser.parse_args()
@@ -210,6 +282,9 @@ def parse_arguments():
     # 處理 metrics logging 開關邏輯
     if args.disable_metrics_logging:
         args.enable_metrics_logging = False
+    # 處理 results logging 開關邏輯
+    if args.disable_results_logging:
+        args.enable_results_logging = False
     
     # 確保 API Key 優先從環境變數讀取
     if not args.retrieval_reranker_api_key or not args.generator_api_key:
@@ -220,6 +295,10 @@ def parse_arguments():
             print("⚠️  警告: 未設定 API_KEY 環境變數")
             print("   請在 .env 檔案中設定 API_KEY=your_api_key_here")
             args.api_key = "none"  # 預設值
+
+    # 讀取 HF token（支援兩種常見環境變數名稱）
+    if not args.hf_token:
+        args.hf_token = os.getenv("HUGGINGFACE_HUB_TOKEN") or os.getenv("HF_TOKEN")
     
     return args
 
