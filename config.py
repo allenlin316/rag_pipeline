@@ -100,7 +100,7 @@ def parse_arguments():
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=4096,
+        default=10000,
         help="Maximum number of tokens to generate"
     )
     parser.add_argument(
@@ -203,13 +203,13 @@ def parse_arguments():
     parser.add_argument(
         "--chunk-size",
         type=int,
-        default=512,
+        default=800,
         help="Text chunk size in characters"
     )
     parser.add_argument(
         "--chunk-overlap",
         type=int,
-        default=0,
+        default=200,
         help="Chunk overlap in characters"
     )
     

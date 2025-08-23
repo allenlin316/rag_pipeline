@@ -255,7 +255,7 @@ if __name__ == "__main__":
             # 檢查是否為快速測試模式
             if getattr(config, "quick_test", False):
                 print("⚡ 快速測試模式：只處理第一行資料")
-                split_ds = split_ds.select(range(15))  # 只取前 15 行
+                split_ds = split_ds.select(range(10))  # 只取前 15 行
             
             # 將該 split 的所有 context 加入知識庫
             print("📚 將 contexts 加入 Chroma...")
@@ -282,9 +282,9 @@ if __name__ == "__main__":
                 print(f"A: {ans}")
                 print(f"Expected: {gt_answer}")
                 
-                # 快速測試模式下只處理第一行就結束
-                if getattr(config, "quick_test", False):
-                    print("⚡ 快速測試完成，只處理了第一行資料")
+                # 快速測試模式下處理前15行後結束
+                if getattr(config, "quick_test", False) and idx >= 9:  # 0-9 共 10 行
+                    print("⚡ 快速測試完成，已處理了 10 行資料")
                     break
 
         print("\n✅ Dataset 批次流程完成")

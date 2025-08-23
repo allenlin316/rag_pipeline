@@ -13,6 +13,13 @@ from .text_chunker import (
     DocumentChunker
 )
 
+from .text_splitters import (
+    TextSplitter,
+    CharacterTextSplitter,
+    RecursiveCharacterTextSplitter,
+    Language
+)
+
 from .reranker import (
     RerankerAPI,
     reranker
@@ -40,6 +47,12 @@ __all__ = [
     "TextChunk",
     "TextChunker",
     "DocumentChunker",
+    
+    # Text Splitters
+    "TextSplitter",
+    "CharacterTextSplitter",
+    "RecursiveCharacterTextSplitter",
+    "Language",
     
     # Reranker
     "RerankerAPI",

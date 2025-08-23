@@ -1,7 +1,7 @@
 import os
 import asyncio
 from typing import Optional, Literal, List
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 from deepeval.models import DeepEvalBaseLLM
 from dotenv import load_dotenv
 from deepeval.metrics import (
@@ -36,6 +36,12 @@ class CustomLLMJudge(DeepEvalBaseLLM):
         
         # 初始化 OpenAI client
         self.client = OpenAI(
+            api_key=self.api_key, 
+            base_url=f"{self.base_url}/v1"
+        )
+        
+        # 初始化異步 OpenAI client
+        self.async_client = AsyncOpenAI(
             api_key=self.api_key, 
             base_url=f"{self.base_url}/v1"
         )
@@ -117,7 +123,33 @@ class CustomLLMJudge(DeepEvalBaseLLM):
 
 
     async def a_generate(self, prompt: str, schema: BaseModel) -> BaseModel:
-        return self.generate(prompt, schema)
+        """異步版本的 generate 方法"""
+        # 創建系統提示
+        system_prompt = "你是一個專業的 AI 助手，專門生成符合指定結構的回應。請確保所有回應都完全符合提供的 schema 格式。"
+        
+        try:
+            # 使用異步 OpenAI client 的結構化解析功能
+            response = await self.async_client.chat.completions.parse(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format=schema,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature
+            )
+            
+            # 取得結構化結果
+            result = response.choices[0].message.parsed
+            return result
+            
+        except Exception as e:
+            print(f"異步結構化解析失敗: {e}")
+            print(f"原始提示長度: {len(prompt)} 字符")
+            print(f"使用的 max_tokens: {self.max_tokens}")
+            # 返回一個默認的 schema 實例
+            return self._create_default_schema_instance(schema)
 
 def evaluate_rag_pipeline(
     query: str,

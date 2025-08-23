@@ -1,11 +1,7 @@
 import requests
 from typing import List, Dict, Any
 from config import get_config
-
-# 定義 Document 類型提示
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from .retriever import Document
+from .retriever import Document
 
 class RerankerAPI:
     """Reranker API 客戶端
@@ -32,7 +28,7 @@ class RerankerAPI:
     def rerank(self, query: str, documents: List[str], model: str = None, truncate: str = "END") -> List[Dict[str, Any]]:
         """重新排序文件，依 base_url 選擇不同的 API 格式"""
         if self._use_litellm_format():
-            # 使用 quick_test.py 相同格式
+            # 使用 litellm 格式
             data = {
                 "model": model or self.model,
                 "query": query,
@@ -52,66 +48,70 @@ class RerankerAPI:
         response = requests.post(url, headers=self.headers, json=data, timeout=30)
         if response.status_code == 200:
             raw = response.json()
-            # 將不同格式統一轉為 [{"index": int, "score": float}]
-            items = []
-            payload_list = None
-            if isinstance(raw, dict):
-                # 常見鍵：results、data
-                if isinstance(raw.get("results"), list):
-                    payload_list = raw["results"]
-                elif isinstance(raw.get("data"), list):
-                    payload_list = raw["data"]
-                # 變體：results.items
-                elif isinstance(raw.get("results"), dict) and isinstance(raw["results"].get("items"), list):
-                    payload_list = raw["results"]["items"]
-                # 變體：output.results
-                elif isinstance(raw.get("output"), dict) and isinstance(raw["output"].get("results"), list):
-                    payload_list = raw["output"]["results"]
-                # 變體：ranking
-                elif isinstance(raw.get("ranking"), list):
-                    payload_list = raw["ranking"]
-                # 變體：rankings（注意複數）
-                elif isinstance(raw.get("rankings"), list):
-                    payload_list = raw["rankings"]
-                # 變體：scores + indices
-                elif isinstance(raw.get("scores"), list):
-                    scores = raw.get("scores")
-                    indices = raw.get("indices") or list(range(len(scores)))
-                    payload_list = [{"index": idx, "score": sc} for idx, sc in zip(indices, scores)]
-            elif isinstance(raw, list):
-                payload_list = raw
-
-            if not isinstance(payload_list, list):
-                # 額外偵錯輸出（不拋錯，只回傳空陣列）
-                try:
-                    print(f"⚠️ Reranker 回傳格式無法解析，keys={list(raw.keys()) if isinstance(raw, dict) else type(raw)}")
-                except Exception:
-                    pass
-                return []
-
-            for i, item in enumerate(payload_list):
-                if isinstance(item, dict):
-                    idx = item.get("index", i)
-                    score = item.get("score")
-                    if score is None:
-                        score = item.get("relevance_score")
-                    # 仍找不到分數，嘗試常見鍵
-                    if score is None:
-                        score = item.get("relevanceScore")
-                    # rankings 變體：使用 logit 作為分數（logit 越大表示越相關）
-                    if score is None and item.get("logit") is not None:
-                        score = item.get("logit")
-                    if score is None:
-                        # 無法辨識則設為 0
-                        score = 0.0
-                    items.append({"index": idx, "score": float(score) if isinstance(score, (int, float, str)) else 0.0})
-                elif isinstance(item, (int, float)):
-                    items.append({"index": i, "score": float(item)})
-                else:
-                    items.append({"index": i, "score": 0.0})
-            return items
+            return self._parse_rerank_response(raw)
         else:
             raise Exception(f"Reranker API 錯誤: {response.status_code} - {response.text}")
+    
+    def _parse_rerank_response(self, raw: Any) -> List[Dict[str, Any]]:
+        """解析重排序回應，統一格式為 [{"index": int, "score": float}]"""
+        items = []
+        
+        # 提取結果列表
+        payload_list = None
+        if isinstance(raw, dict):
+            # 嘗試常見的鍵名
+            for key in ["results", "data", "ranking", "rankings"]:
+                if isinstance(raw.get(key), list):
+                    payload_list = raw[key]
+                    break
+            
+            # 嘗試嵌套結構
+            if payload_list is None:
+                if isinstance(raw.get("results"), dict) and isinstance(raw["results"].get("items"), list):
+                    payload_list = raw["results"]["items"]
+                elif isinstance(raw.get("output"), dict) and isinstance(raw["output"].get("results"), list):
+                    payload_list = raw["output"]["results"]
+            
+            # 嘗試 scores + indices 格式
+            if payload_list is None and isinstance(raw.get("scores"), list):
+                scores = raw.get("scores")
+                indices = raw.get("indices") or list(range(len(scores)))
+                payload_list = [{"index": idx, "score": sc} for idx, sc in zip(indices, scores)]
+        
+        elif isinstance(raw, list):
+            payload_list = raw
+        
+        # 如果無法解析，返回空列表
+        if not isinstance(payload_list, list):
+            print(f"⚠️ Reranker 回傳格式無法解析: {type(raw)}")
+            return []
+        
+        # 解析每個項目
+        for i, item in enumerate(payload_list):
+            if isinstance(item, dict):
+                idx = item.get("index", i)
+                score = self._extract_score(item)
+                items.append({"index": idx, "score": score})
+            elif isinstance(item, (int, float)):
+                items.append({"index": i, "score": float(item)})
+            else:
+                items.append({"index": i, "score": 0.0})
+        
+        return items
+    
+    def _extract_score(self, item: Dict[str, Any]) -> float:
+        """從項目中提取分數"""
+        # 嘗試常見的分數鍵名
+        for key in ["score", "relevance_score", "relevanceScore"]:
+            if key in item and item[key] is not None:
+                return float(item[key])
+        
+        # 嘗試使用 logit 作為分數
+        if "logit" in item and item["logit"] is not None:
+            return float(item["logit"])
+        
+        # 默認返回 0
+        return 0.0
 
 def reranker(query: str, documents: List["Document"], top_k: int = 5) -> List["Document"]:
     """
@@ -138,23 +138,37 @@ def reranker(query: str, documents: List["Document"], top_k: int = 5) -> List["D
         
         print(f"🔍 Reranker 返回結果: {rerank_results}")
         
+        # 創建文檔副本，避免修改原始對象
+        doc_copies = []
+        for i, doc in enumerate(documents):
+            doc_copy = Document(
+                content=doc.content,
+                metadata=doc.metadata.copy() if doc.metadata else {},
+                score=doc.score  # 保留原始分數
+            )
+            doc_copies.append(doc_copy)
+        
         # 更新文件分數（依回傳 index 對應）
-        # 先保留原始分數，只有在 rerank_results 中有對應結果時才更新
         for result in rerank_results:
             idx = result.get("index")
             score = result.get("score", 0.0)
-            if isinstance(idx, int) and 0 <= idx < len(documents):
-                documents[idx].score = score
+            if isinstance(idx, int) and 0 <= idx < len(doc_copies):
+                doc_copies[idx].score = score
                 print(f"🔍 更新文檔 {idx} 分數為: {score:.6f}")
             else:
                 print(f"⚠️ 無效的索引 {idx} 或分數 {score}")
         
         # 按分數排序
-        documents.sort(key=lambda x: x.score, reverse=True)
+        doc_copies.sort(key=lambda x: x.score, reverse=True)
         
-        print(f"✅ 重新排序完成，返回前 {min(top_k, len(documents))} 個文件")
-        return documents[:top_k]
+        print(f"✅ 重新排序完成，返回前 {min(top_k, len(doc_copies))} 個文件")
+        return doc_copies[:top_k]
     
     except Exception as e:
         print(f"⚠️ Reranker API 錯誤，使用原始排序: {e}")
-        return documents[:top_k]
+        # 返回原始文檔的副本，保留原始分數
+        return [Document(
+            content=doc.content, 
+            metadata=doc.metadata.copy() if doc.metadata else {}, 
+            score=doc.score
+        ) for doc in documents[:top_k]]

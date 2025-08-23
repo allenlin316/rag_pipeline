@@ -128,3 +128,5 @@ quick_test.py
 .deepeval/
 *.csv
 test.json
+*.xlsx
+*.jsonl
