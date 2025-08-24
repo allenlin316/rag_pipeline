@@ -9,19 +9,24 @@ if TYPE_CHECKING:
 
 class GeneratorAPI:
     """Generator API 客戶端"""
-    def __init__(self, api_key: str = None, base_url: str = None, model: str = None, max_tokens: int = None, temperature: float = None):
+    def __init__(self, api_key: str = None, base_url: str = None, model: str = None, max_tokens: int = None, temperature: float = None, skip_special_tokens: bool = None):
         config = get_config()
         self.api_key = config.generator_api_key
         self.base_url = base_url or config.generator_base_url
         self.model = model or config.generator_model
         self.max_tokens = max_tokens or config.max_tokens
         self.temperature = temperature or config.temperature
+        # 處理 skip_special_tokens 邏輯
+        # 如果沒有給 --skip-special-tokens 參數，則為 True
+        # 如果有給 --skip-special-tokens 參數，則為 False
+        config_skip_special_tokens = getattr(config, 'skip_special_tokens', True)
+        self.skip_special_tokens = skip_special_tokens if skip_special_tokens is not None else (not config_skip_special_tokens)
         self.headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}"
         }
     
-    def generate(self, prompt: str, model: str = None, max_tokens: int = None, temperature: float = None) -> str:
+    def generate(self, prompt: str, model: str = None, max_tokens: int = None, temperature: float = None, skip_special_tokens: bool = None) -> str:
         """生成回答"""
         data = {
             "model": model or self.model,
@@ -32,6 +37,19 @@ class GeneratorAPI:
             "max_tokens": max_tokens or self.max_tokens,
             "temperature": temperature or self.temperature,
         }
+        
+        # 處理 skip_special_tokens 參數
+        # 優先級：函數參數 > 配置
+        should_skip_special_tokens = skip_special_tokens
+        if should_skip_special_tokens is None:
+            should_skip_special_tokens = self.skip_special_tokens
+        
+        # 如果設定了 skip_special_tokens，添加到 extra_body 中
+        if should_skip_special_tokens is not None:
+            data["extra_body"] = {
+                "skip_special_tokens": should_skip_special_tokens
+            }
+            print(f"🔧 使用 skip_special_tokens={should_skip_special_tokens} (在 extra_body 中)")
         
         response = requests.post(
             f"{self.base_url}/chat/completions",

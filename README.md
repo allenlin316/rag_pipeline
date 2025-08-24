@@ -112,6 +112,29 @@ python main.py --disable-reranker
 # 啟用 Reranker 階段（預設行為）
 python main.py --enable-reranker
 
+# 使用 Ace1-24B-Security 模型並啟用 skip_special_tokens
+python main.py --generator-model Ace1-24B-Security --skip-special-tokens
+
+# 使用其他模型時也可以設定 skip_special_tokens
+python main.py --generator-model gemma-3-27b-it --skip-special-tokens
+
+**注意**: `skip_special_tokens` 參數會放在 `extra_body` 中傳遞給 API。
+
+**邏輯說明**:
+- **沒有給 `--skip-special-tokens` 參數時**: `skip_special_tokens = true` (跳過特殊 tokens)
+- **有給 `--skip-special-tokens` 參數時**: `skip_special_tokens = false` (不跳過特殊 tokens)
+
+**API 請求格式**:
+```json
+{
+    "model": "Ace1-24B-Security",
+    "messages": [...],
+    "extra_body": {
+        "skip_special_tokens": true  // 或 false，取決於是否給了參數
+    }
+}
+```
+
 ### 個別組件使用
 
 ```python

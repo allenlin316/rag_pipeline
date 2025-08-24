@@ -31,10 +31,31 @@ class EmbeddingAPI:
         }
         self.session = requests.Session()
     
-    def get_embedding(self, text: str, model: str = None) -> List[float]:
+    def _format_text_for_model(self, text: str, is_query: bool = False) -> str:
+        """根據模型類型格式化文本"""
+        # 檢查是否為 E5 系列模型
+        e5_models = ["multilingual-e5-large", "e5-large", "e5-base", "e5-small"]
+        is_e5_model = any(e5_name in self.model.lower() for e5_name in e5_models)
+        
+        if is_e5_model:
+            # E5 系列模型需要特殊前綴
+            if is_query:
+                formatted = f"query: {text}"
+            else:
+                formatted = f"passage: {text}"
+            #print(f"🔧 E5 模型格式化文本: {formatted}")
+            return formatted
+        else:
+            # 其他模型直接返回原始文本
+            return text
+    
+    def get_embedding(self, text: str, model: str = None, is_query: bool = False) -> List[float]:
         """獲取文本的 embedding"""
         if not text or not text.strip():
             raise Exception("文本內容為空")
+        
+        # 根據模型格式化文本
+        #formatted_text = self._format_text_for_model(text, is_query)
         
         data = {
             "input": text,
@@ -42,17 +63,27 @@ class EmbeddingAPI:
         }
         
         try:
+            #print(f"🌐 發送請求到: {self.base_url}/embeddings")
+            #print(f"📤 請求數據: {data}")
+            
             r = self.session.post(
                 f"{self.base_url}/embeddings",
                 headers=self.headers,
                 json=data,
                 timeout=30  # 添加超時
             )
-            r.raise_for_status()
+            
+            #print(f"📥 響應狀態碼: {r.status_code}")
+            
+            if r.status_code != 200:
+                print(f"❌ 錯誤響應: {r.text}")
+                raise Exception(f"API 返回錯誤狀態碼 {r.status_code}: {r.text}")
+            
             result = r.json()
             if "data" in result and len(result["data"]) > 0:
                 embedding = result["data"][0]["embedding"]
                 if embedding and len(embedding) > 0:
+                    print(f"✅ 成功獲取 embedding，維度: {len(embedding)}")
                     return embedding
                 else:
                     raise Exception("API 返回的 embedding 為空")
@@ -64,10 +95,14 @@ class EmbeddingAPI:
         except Exception as e:
             raise Exception(f"獲取 embedding 時發生錯誤: {e}")
 
-    def get_embeddings(self, texts: List[str], model: str = None) -> List[List[float]]:
+    def get_embeddings(self, texts: List[str], model: str = None, is_query: bool = False) -> List[List[float]]:
         """獲取多個文本的 embedding"""
         if not texts:
             return []
+        
+        # 根據模型格式化所有文本
+        #formatted_texts = [self._format_text_for_model(text, is_query) for text in texts]
+        
         data = {
             "input": texts,
             "model": model or self.model
@@ -180,7 +215,7 @@ class ChromaVectorStore:
         # 先嘗試獲取一個 embedding 來確定維度
         embedding_dimension = None
         try:
-            test_embedding = self.embedding_api.get_embedding("test")
+            test_embedding = self.embedding_api.get_embedding("test", is_query=False)
             embedding_dimension = len(test_embedding)
             print(f"✅ 確認 embedding 維度: {embedding_dimension}")
         except Exception as e:
@@ -210,9 +245,9 @@ class ChromaVectorStore:
             })
             metadatas.append(metadata)
             
-            # 獲取 embedding
+            # 獲取 embedding（文檔不需要 query 前綴）
             try:
-                embedding = self.embedding_api.get_embedding(doc.content)
+                embedding = self.embedding_api.get_embedding(doc.content, is_query=False)
                 if embedding and len(embedding) > 0:
                     embeddings.append(embedding)
                 else:
@@ -248,7 +283,7 @@ class ChromaVectorStore:
                 batch_ids = ids[i:i+batch_size]
                 batch_metadatas = metadatas[i:i+batch_size]
                 
-                batch_embs = self.embedding_api.get_embeddings(batch_texts)
+                batch_embs = self.embedding_api.get_embeddings(batch_texts, is_query=False)
                 
                 if len(batch_embs) != len(batch_texts):
                     raise Exception(f"批次嵌入失敗，預期 {len(batch_texts)} 個 embedding，但只收到 {len(batch_embs)} 個")
@@ -275,8 +310,8 @@ class ChromaVectorStore:
     def search(self, query: str, top_k: int = 10) -> List[Document]:
         """搜尋相似文件"""
         try:
-            # 獲取查詢的 embedding
-            query_embedding = self.embedding_api.get_embedding(query)
+            # 獲取查詢的 embedding（查詢需要 query 前綴）
+            query_embedding = self.embedding_api.get_embedding(query, is_query=True)
             
             # 在 Chroma 中搜尋
             results = self.collection.query(

@@ -254,7 +254,7 @@ if __name__ == "__main__":
 
             # 檢查是否為快速測試模式
             if getattr(config, "quick_test", False):
-                print("⚡ 快速測試模式：只處理第一行資料")
+                print("⚡ 快速測試模式：只處理前十行資料")
                 split_ds = split_ds.select(range(10))  # 只取前 15 行
             
             # 將該 split 的所有 context 加入知識庫

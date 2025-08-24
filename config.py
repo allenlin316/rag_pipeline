@@ -109,6 +109,12 @@ def parse_arguments():
         default=0.0,
         help="Temperature for text generation (0.0-1.0)"
     )
+    parser.add_argument(
+        "--skip-special-tokens",
+        action="store_true",
+        default=False,
+        help="Skip special tokens in generation (useful for Ace1-24B-Security model)"
+    )
     
     # Chroma 向量儲存參數
     parser.add_argument(
