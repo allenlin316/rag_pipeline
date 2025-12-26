@@ -1,6 +1,7 @@
 # RAG Pipeline
 
-這是一個完整的 RAG (Retrieval-Augmented Generation) pipeline 實現，包含 retriever、reranker 和 generator 三個主要組件。
+* 這是一個完整的 RAG (Retrieval-Augmented Generation) pipeline 實現，包含 retriever、reranker 和 generator 三個主要組件。
+* 透過 DeepEval framework 快速測試 retriever, reranker, generation model 的效能
 
 ## 功能特色
 
@@ -35,50 +36,29 @@ cd rag-pipeline
 pip install -r requirements.txt
 ```
 
-3. 設定環境變數（必需）：
+3. 設定環境變數 (必需)
 
-**重要**: 
-- API Key 必須設定在 `.env` 檔案中，不能通過命令行參數傳遞
-- `.env` 檔案包含敏感資訊，請確保將其添加到 `.gitignore` 中
+>API Key 必須設定在 `.env` 檔案中，不能通過命令行參數傳遞，`.env` 檔案包含敏感資訊，請確保將其添加到 `.gitignore` 中
 
-### 命令行參數
+## Quick Start
+快速測試 embeddings, rerankers, generation models 的指標
+```bash
+# 這邊的評測資料集可以換掉，因為這邊是 private 資料集 (566筆)
+python .\main.py --dataset-name minyichen/RAG_EVAL --enable-metrics-logging --enable-results-logging --reranker-model Qwen3-Reranker-4B --embedding-model Qwen3-Embedding-4B  --reranker-base-url https://litellm-ekkks8gsocw.dgx-coolify.apmic.ai/ --quick-test
+```
+
+### 命令行參數細節
 
 你可以使用命令行參數來自定義配置：
 
 ```bash
-# 使用預設配置
-python main.py
-
-# 自定義模型和參數
-python main.py \
-    --embedding-model "Qwen3-Embedding-4B" \
-    --generator-model "Qwen2.5-7B-Instruct" \
-    --retriever-top-k 30 \
-    --temperature 0.5 \
-    --verbose
-
-# 使用自定義 API 端點
-python main.py \
-    --base-url "https://your-custom-endpoint.com/v1" \
-    --collection-name "my_documents"
-
-# 禁用 Reranker 階段（跳過重新排序）
+# 禁用 Reranker 階段（跳過重新排序，預設是開啟）
 python main.py --disable-reranker
-
-# 啟用 Reranker 階段（預設行為）
-python main.py --enable-reranker
 
 # 使用 Ace1-24B-Security 模型並啟用 skip_special_tokens
 python main.py --generator-model Ace1-24B-Security --skip-special-tokens
 
-# 使用其他模型時也可以設定 skip_special_tokens
-python main.py --generator-model gemma-3-27b-it --skip-special-tokens
-
 **注意**: `skip_special_tokens` 參數會放在 `extra_body` 中傳遞給 API。
-
-**邏輯說明**:
-- **沒有給 `--skip-special-tokens` 參數時**: `skip_special_tokens = true` (跳過特殊 tokens)
-- **有給 `--skip-special-tokens` 參數時**: `skip_special_tokens = false` (不跳過特殊 tokens)
 
 **API 請求格式**:
 ```json
